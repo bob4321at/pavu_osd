@@ -13,6 +13,7 @@ import (
 	"github.com/guigui-gui/guigui"
 	"github.com/guigui-gui/guigui/basicwidget"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 type AudioStream struct {
@@ -85,6 +86,20 @@ func getStreamVolumeByID(id int) int {
 	return 0
 }
 
+type Game struct{}
+
+func (g *Game) Update() error {
+	return nil
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+
+}
+
+func (g *Game) Layout(ow, oh int) (sw, sh int) {
+	return 1, 1
+}
+
 type Root struct {
 	guigui.DefaultWidget
 
@@ -98,6 +113,10 @@ type Root struct {
 	Rows        guigui.LinearLayout
 	RowsItems   []guigui.LinearLayoutItem
 	layoutItems []guigui.LinearLayoutItem
+
+	SlectedChannel int
+
+	game *Game
 }
 
 type Used_Index struct {
@@ -106,8 +125,63 @@ type Used_Index struct {
 	AudioID int
 }
 
+func (r *Root) Tick(context *guigui.Context, widgetBounds *guigui.WidgetBounds) error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		if ebiten.IsKeyPressed(ebiten.KeyShift) {
+			r.SlectedChannel -= 1
+		} else {
+			r.SlectedChannel += 1
+		}
+		guigui.RequestRedraw(r)
+		guigui.RequestRebuild(r)
+	}
+
+	if r.SlectedChannel < 0 {
+		r.SlectedChannel = 0
+		guigui.RequestRedraw(r)
+		guigui.RequestRebuild(r)
+	} else if r.SlectedChannel > r.sliders.Len()-1 {
+		r.SlectedChannel = r.sliders.Len() - 1
+		guigui.RequestRedraw(r)
+		guigui.RequestRebuild(r)
+	}
+
+	for i := range r.sliders.Len() {
+		if i == r.SlectedChannel {
+			if ebiten.IsKeyPressed(ebiten.Key1) {
+				if r.Volumes[i].Volume-2 >= 0 {
+					setStreamVolume(r.Volumes[i].AudioID, r.Volumes[i].Volume-2)
+					guigui.RequestRedraw(r)
+					guigui.RequestRebuild(r)
+				} else {
+					setStreamVolume(r.Volumes[i].AudioID, 0)
+					guigui.RequestRedraw(r)
+					guigui.RequestRebuild(r)
+				}
+			}
+			if ebiten.IsKeyPressed(ebiten.Key3) {
+				if r.Volumes[i].Volume+2 <= 100 {
+					setStreamVolume(r.Volumes[i].AudioID, r.Volumes[i].Volume+2)
+					guigui.RequestRedraw(r)
+					guigui.RequestRebuild(r)
+				} else {
+					setStreamVolume(r.Volumes[i].AudioID, 100)
+					guigui.RequestRedraw(r)
+					guigui.RequestRebuild(r)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (r *Root) Build(context *guigui.Context, adder *guigui.ChildAdder) error {
 	adder.AddWidget(&r.background)
+
+	if r.game == nil {
+		r.game = &Game{}
+	}
 
 	idReSink := regexp.MustCompile(`Sink Input #(\d+)`)
 	playbackStreams, err := scanStreams("sink-inputs", "Playback", idReSink)
@@ -141,6 +215,13 @@ func (r *Root) Build(context *guigui.Context, adder *guigui.ChildAdder) error {
 		text_to_add := r.text.At(i)
 		text_to_add.SetValue(volume.Name)
 		text_to_add.SetScale(2)
+
+		if i == r.SlectedChannel {
+			fmt.Println("testing")
+			text_to_add.SetBold(true)
+		} else {
+			text_to_add.SetBold(false)
+		}
 	}
 
 	return nil
@@ -203,6 +284,8 @@ func main() {
 	}
 
 	root := &Root{}
+
+	root.SlectedChannel = 0
 
 	if err := guigui.Run(root, op); err != nil {
 		panic(err)
